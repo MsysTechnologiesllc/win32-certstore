@@ -21,6 +21,7 @@ require 'spec_helper'
 describe Win32::Certstore do
 
   let (:certstore) { Win32::Certstore }
+  let (:certbase) { Win32::Certstore::StoreBase }
   
   describe "#list" do
     context "When passing empty certificate store name" do
@@ -48,7 +49,7 @@ describe Win32::Certstore do
       let (:store_name) { "root" }
       let (:root_certificate_name) { "Microsoft Root Certificate Authority"}
       before(:each) do
-        allow_any_instance_of(Win32::Certstore::StoreBase).to receive(:cert_list).and_return([root_certificate_name])
+        allow_any_instance_of(certbase).to receive(:cert_list).and_return([root_certificate_name])
       end
       it "return certificate list" do
         store = certstore.open(store_name)
@@ -61,12 +62,62 @@ describe Win32::Certstore do
     context "When passing valid certificate store name" do
       let (:store_name) { "root" }
       before(:each) do
-        allow_any_instance_of(Win32::Certstore::StoreBase).to receive(:cert_list).and_return([])
+        allow_any_instance_of(certbase).to receive(:cert_list).and_return([])
       end
       it "return no certificate list" do
         store = certstore.open(store_name)
         certificate_list = store.list
         expect(certificate_list.size).to eql(0)
+      end
+    end
+
+    context "When adding invalid certificate" do
+      let (:store_name) { "root" }
+      let (:cert_file_path) { '.\win32\unit\assets\test.cer' }
+      it "return no certificate list" do
+        allow(certbase).to receive(:CertAddEncodedCertificateToStore).and_return(false)
+        store = certstore.open(store_name)
+        expect { store.add(cert_file_path) }.to raise_error(Chef::Exceptions::Win32APIError)
+      end
+    end
+
+    context "When adding certificate failed with FFI::LastError" do
+      let (:store_name) { "root" }
+      let (:cert_file_path) { '.\win32\unit\assets\test.cer' }
+      
+      it "return 'The operation was canceled by the user'" do
+        allow(certbase).to receive(:CertAddEncodedCertificateToStore).and_return(false)
+        allow(FFI::LastError).to receive(:error).and_return(1223)
+        store = certstore.open(store_name)
+        expect { store.add(cert_file_path) }.to raise_error(Chef::Exceptions::Win32APIError)
+      end
+
+      it "return 'Cannot find object or property'" do
+        allow(certbase).to receive(:CertAddEncodedCertificateToStore).and_return(false)
+        allow(FFI::LastError).to receive(:error).and_return(-2146885628)
+        store = certstore.open(store_name)
+        expect { store.add(cert_file_path) }.to raise_error(Chef::Exceptions::Win32APIError)
+      end
+
+      it "return 'An error occurred while reading or writing to a file'" do
+        allow(certbase).to receive(:CertAddEncodedCertificateToStore).and_return(false)
+        allow(FFI::LastError).to receive(:error).and_return(-2146885629)
+        store = certstore.open(store_name)
+        expect { store.add(cert_file_path) }.to raise_error(Chef::Exceptions::Win32APIError)
+      end
+
+      it "return 'ASN1 bad tag value met. -- Is the certificate in DER format?'" do
+        allow(certbase).to receive(:CertAddEncodedCertificateToStore).and_return(false)
+        allow(FFI::LastError).to receive(:error).and_return(-2146881269)
+        store = certstore.open(store_name)
+        expect { store.add(cert_file_path) }.to raise_error(Chef::Exceptions::Win32APIError)
+      end
+
+      it "return 'ASN1 unexpected end of data'" do
+        allow(certbase).to receive(:CertAddEncodedCertificateToStore).and_return(false)
+        allow(FFI::LastError).to receive(:error).and_return(-2146881278)
+        store = certstore.open(store_name)
+        expect { store.add(cert_file_path) }.to raise_error(Chef::Exceptions::Win32APIError)
       end
     end
   end

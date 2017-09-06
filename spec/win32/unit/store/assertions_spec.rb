@@ -18,10 +18,10 @@
 
 require 'spec_helper'
 
-describe Win32::Store::Assertions do
+describe Win32::Mixin::Assertions do
 
   class Store
-    include Win32::Store::Assertions
+    include Win32::Mixin::Assertions
   end
 
   let (:certstore) { Store.new }
@@ -52,6 +52,36 @@ describe Win32::Store::Assertions do
       let (:store_name) { "root" }
       it "Not Raise ArgumentError" do
         expect { certstore.validate_store(store_name) }.not_to raise_error(ArgumentError)
+      end
+    end
+  end
+
+  describe "#validate_certificate" do
+    context "When not passing certificate file" do
+      let (:cert_file_path) { "" }
+      it "Raise ArgumentError" do
+        expect { certstore.validate_certificate(cert_file_path) }.to raise_error(ArgumentError)
+      end
+    end
+
+    context "When passing invalid certificate" do
+      let (:cert_file_path) { "Chef" }
+      it "Raise ArgumentError" do
+        expect { certstore.validate_certificate(cert_file_path) }.to raise_error(ArgumentError)
+      end
+    end
+
+    context "When passing nil" do
+      let (:cert_file_path) { nil }
+      it "Raise ArgumentError" do
+        expect { certstore.validate_certificate(cert_file_path) }.to raise_error(ArgumentError)
+      end
+    end
+
+    context "When passing valid certificate file" do
+      let (:cert_file_path) { '.\win32\unit\assets\test.der' }
+      it "Not Raise ArgumentError" do
+        expect { certstore.validate_certificate(cert_file_path) }.not_to raise_error(ArgumentError)
       end
     end
   end

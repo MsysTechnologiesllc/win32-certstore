@@ -15,28 +15,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require 'store/crypto'
+require 'mixin/crypto'
+require 'openssl'
 
 module Win32
   class Certstore
     module StoreBase
-      include Win32::Store::Crypto
+      include Win32::Mixin::Crypto
+      include Win32::Mixin::Assertions
       include Chef::Mixin::WideString
+      include Chef::Mixin::ShellOut
 
-      def cert_list(certstore_handle)
+      def cert_list(store_handler)
         cert_name = FFI::MemoryPointer.new(2, 128)
         cert_list = []
         begin
-          while (pCertContext = CertEnumCertificatesInStore(certstore_handle, pCertContext) and not pCertContext.null? ) do
+          while (pCertContext = CertEnumCertificatesInStore(store_handler, pCertContext) and not pCertContext.null? ) do
             if (CertGetNameStringW(pCertContext, CERT_NAME_FRIENDLY_DISPLAY_TYPE, CERT_NAME_ISSUER_FLAG, nil, cert_name, 1024))
               cert_list << cert_name.read_wstring
             end
           end
           CertFreeCertificateContext(pCertContext)
         rescue Exception => e
+          @error = "load"
           lookup_error
         end
         cert_list.to_json
+      end
+      
+      def cert_add(store_handler, cert_file_path)
+        validate_certificate(cert_file_path)
+        file_content = read_certificate_content(cert_file_path)
+        pointer_cert = FFI::MemoryPointer.from_string(file_content)
+        cert_length = file_content.bytesize
+        begin
+          if (CertAddEncodedCertificateToStore(store_handler, X509_ASN_ENCODING, pointer_cert, cert_length, 2, nil))
+            return "Added certificate #{File.basename(cert_path)} successfully"
+          else
+            lookup_error
+          end
+        rescue Exception => e
+          @error = "add"
+          lookup_error
+        end
       end
 
       private
@@ -55,8 +76,17 @@ module Win32
         when -2146881278
           raise Chef::Exceptions::Win32APIError, "ASN1 unexpected end of data.  "
         else
-          raise Chef::Exceptions::Win32APIError, "Unable to load certificate with error: #{last_error}."
+          raise Chef::Exceptions::Win32APIError, "Unable to #{@error} certificate with error: #{last_error}."
         end
+      end
+
+      def read_certificate_content(cert_path)
+        unless (File.extname(cert_path) == ".der")
+          temp_file = shell_out("powershell.exe -Command $env:temp").stdout.strip.concat("\\TempCert.der")
+          shell_out("powershell.exe -Command openssl x509 -in #{cert_path} -out #{temp_file} -outform DER")
+          cert_path = temp_file
+        end
+        File.read("#{cert_path}")
       end
 
     end
