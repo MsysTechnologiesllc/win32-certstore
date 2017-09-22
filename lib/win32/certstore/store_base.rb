@@ -60,6 +60,29 @@ module Win32
         end
       end
 
+      def cert_delete(store_handler, certificate_name)
+        cert_name = FFI::MemoryPointer.new(2, 128)
+        delete_flag = 0
+        begin
+          while (pCertContext = CertEnumCertificatesInStore(store_handler, pCertContext) and not pCertContext.null? ) do
+            if (CertGetNameStringW(pCertContext, CERT_NAME_FRIENDLY_DISPLAY_TYPE, CERT_NAME_ISSUER_FLAG, nil, cert_name, 1024))
+              if( cert_name.read_wstring.downcase == certificate_name.downcase )
+                if(CertDeleteCertificateFromStore(CertDuplicateCertificateContext(pCertContext)))
+                  delete_flag = 1
+                  return "Deleted certificate #{certificate_name} successfully"
+                else
+                  lookup_error
+                end
+              end
+            end
+          end
+          return "Cannot find certificate with name as `#{certificate_name}`. Please re-verify certificate Issuer name or Friendly name" if delete_flag == 0
+        rescue Exception => e
+          @error = "delete: "
+          lookup_error
+        end
+      end
+
       private
 
       def lookup_error
@@ -75,6 +98,8 @@ module Win32
           raise Chef::Exceptions::Win32APIError, "ASN1 bad tag value met. -- Is the certificate in DER format?"
         when -2146881278
           raise Chef::Exceptions::Win32APIError, "ASN1 unexpected end of data.  "
+        when -2147024891
+          raise Chef::Exceptions::Win32APIError, "System.UnauthorizedAccessException, Access denied.."
         else
           raise Chef::Exceptions::Win32APIError, "Unable to #{@error} certificate with error: #{last_error}."
         end
